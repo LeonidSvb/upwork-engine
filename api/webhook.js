@@ -1,16 +1,27 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      console.error('Missing environment variables:', {
+        url: !!process.env.SUPABASE_URL,
+        key: !!process.env.SUPABASE_SERVICE_KEY
+      });
+      return res.status(500).json({
+        error: 'Configuration error',
+        message: 'Missing Supabase credentials'
+      });
+    }
+
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+
     const payload = req.body;
 
     console.log('Webhook received:', JSON.stringify(payload, null, 2));
