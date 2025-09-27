@@ -1,0 +1,15 @@
+{
+  "name": "upwork-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Upwork AI Intake & Triage System",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  },
+  "devDependencies": {
+    "vercel": "^37.0.0"
+  }
+}
