@@ -1,12 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+export async function POST(request) {
   try {
-    const payload = req.body;
+    const payload = await request.json();
     const timestamp = new Date().toISOString();
 
     console.log('='.repeat(80));
@@ -16,7 +13,7 @@ export default async function handler(req, res) {
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
       console.error('Missing Supabase credentials');
-      return res.status(200).json({
+      return NextResponse.json({
         success: true,
         message: 'Data logged (Supabase not configured)',
         timestamp
@@ -103,7 +100,7 @@ export default async function handler(req, res) {
 
     console.log('='.repeat(80));
 
-    return res.status(200).json({
+    return NextResponse.json({
       success: true,
       batch_id: batch.id,
       jobs_saved: jobs.length,
@@ -112,9 +109,9 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('ERROR:', error);
-    return res.status(500).json({
+    return NextResponse.json({
       error: 'Internal server error',
       message: error.message
-    });
+    }, { status: 500 });
   }
 }
