@@ -7,6 +7,34 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-09-27
+
+### Добавлено
+- Полная интеграция shadcn/ui библиотеки компонентов
+- Установлены 17 компонентов: button, card, badge, table, input, label, dialog, dropdown-menu, avatar, separator, tabs, skeleton, toast, popover, tooltip
+- Реализован табличный интерфейс для отображения вакансий
+- Добавлен компонент Table с полной структурой (TableHeader, TableBody, TableRow, TableCell)
+- Интегрированы Badge компоненты для статусов (Excellent/Good/Risky)
+- Добавлены все необходимые зависимости: class-variance-authority, clsx, tailwind-merge, lucide-react
+- Создана утилита cn() в lib/utils.ts для умного объединения CSS классов
+- Добавлен хук use-toast для системы уведомлений
+- Настроены CSS переменные для темной/светлой темы в globals.css
+- Создан .mcp.json для конфигурации MCP серверов (shadcn, github, filesystem, neon)
+- Добавлен скрипт seed-test-data.js для заполнения БД тестовыми данными
+- Заполнено 10 реальных тестовых вакансий в таблицу jobs
+
+### Изменено
+- Переработан app/page.tsx с карточного на табличный layout
+- Обновлен дизайн главной страницы с использованием shadcn компонентов
+- Улучшено отображение навыков (показываются первые 3 + счетчик)
+- Обновлены стили для соответствия дизайн-системе shadcn
+- Исправлен тип budget_type с 'Fixed'/'Hourly' на 'fixed'/'hourly' для соответствия схеме БД
+
+### Исправлено
+- Исправлена ошибка "Module not found: class-variance-authority"
+- Добавлены отсутствующие peer dependencies для shadcn/ui
+- Исправлено поле raw_data → raw в скрипте заполнения данных
+
 ## [0.2.0] - 2025-09-27
 
 ### Добавлено
