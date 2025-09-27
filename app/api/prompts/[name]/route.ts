@@ -35,7 +35,7 @@ export async function GET(
       log.database.error('Ошибка получения промпта', {
         operation: 'select',
         table: 'ai_prompts',
-        slug,
+        recordId: slug,
         error: error.message
       }, { requestId });
 
