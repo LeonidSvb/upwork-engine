@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import AnalyzeButton from '@/components/AnalyzeButton';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -126,15 +127,18 @@ export default async function HomePage() {
                       {job.published_at && new Date(job.published_at).toLocaleDateString('ru-RU')}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button asChild size="sm">
-                        <a
-                          href={job.upwork_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Открыть
-                        </a>
-                      </Button>
+                      <div className="flex gap-2 justify-end">
+                        <AnalyzeButton jobId={job.id} />
+                        <Button asChild size="sm" variant="outline">
+                          <a
+                            href={job.upwork_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Открыть
+                          </a>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

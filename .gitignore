@@ -7,3 +7,8 @@ node_modules
 *.log
 .next
 nul
+
+# Логи
+logs/
+*.log
+log/

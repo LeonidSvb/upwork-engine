@@ -1,10 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { log } from '../../../lib/logging';
 
 export async function POST(request) {
+  const requestId = Math.random().toString(36).substring(7);
+  const startTime = Date.now();
+
   try {
     const payload = await request.json();
     const timestamp = new Date().toISOString();
+
+    log.webhook.received('Получен webhook от Upwork', {
+      source: 'upwork',
+      payload: {
+        total: payload.total,
+        filter: payload.filter?.name,
+        projects_count: payload.projects?.length || 0
+      }
+    }, { requestId, timestamp });
 
     console.log('='.repeat(80));
     console.log('WEBHOOK RECEIVED AT:', timestamp);
@@ -12,6 +25,7 @@ export async function POST(request) {
     console.log('='.repeat(80));
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      log.error('Отсутствуют креденшиалы Supabase', { requestId });
       console.error('Missing Supabase credentials');
       return NextResponse.json({
         success: true,
@@ -41,10 +55,20 @@ export async function POST(request) {
       .single();
 
     if (batchError) {
+      log.database.error('Ошибка сохранения batch', {
+        operation: 'insert',
+        table: 'webhook_batches',
+        error: batchError.message
+      }, { requestId });
       console.error('Batch save error:', batchError);
       throw batchError;
     }
 
+    log.database.success('Батч сохранен', {
+      operation: 'insert',
+      table: 'webhook_batches',
+      recordId: batch.id
+    }, { requestId });
     console.log('Batch saved:', batch.id);
 
     const jobs = payload.projects?.map(project => {
@@ -91,12 +115,30 @@ export async function POST(request) {
         .select('id');
 
       if (jobsError) {
+        log.database.error('Ошибка сохранения jobs', {
+          operation: 'upsert',
+          table: 'jobs',
+          error: jobsError.message
+        }, { requestId });
         console.error('Jobs save error:', jobsError);
         throw jobsError;
       }
 
+      log.database.success('Сохранены jobs', {
+        operation: 'upsert',
+        table: 'jobs',
+        recordsCount: savedJobs.length
+      }, { requestId });
       console.log(`Saved ${savedJobs.length} jobs`);
     }
+
+    const duration = Date.now() - startTime;
+
+    log.webhook.processed('Webhook успешно обработан', {
+      source: 'upwork',
+      batchId: batch.id,
+      jobsCount: jobs.length
+    }, { requestId, duration });
 
     console.log('='.repeat(80));
 
@@ -108,6 +150,13 @@ export async function POST(request) {
     });
 
   } catch (error) {
+    const duration = Date.now() - startTime;
+
+    log.webhook.error('Ошибка обработки webhook', {
+      source: 'upwork',
+      error: error.message
+    }, { requestId, duration });
+
     console.error('ERROR:', error);
     return NextResponse.json({
       error: 'Internal server error',
