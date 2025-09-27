@@ -45,6 +45,11 @@ export default async function HomePage() {
             <h2 className="text-2xl font-semibold">Вакансии</h2>
             <p className="text-muted-foreground mt-1">Всего: {jobs.length}</p>
           </div>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <a href="/admin">Админка промптов</a>
+            </Button>
+          </div>
         </div>
 
         {jobs.length === 0 ? (

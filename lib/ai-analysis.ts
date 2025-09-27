@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { callOpenAI } from './openai';
+import { getPrompt } from './prompts';
+import { log } from './logging';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -21,66 +23,144 @@ interface AnalysisResult {
   suggested_approach: string;
 }
 
-export async function runDeepAnalysis(jobId: string, userId: string = 'default'): Promise<AnalysisResult> {
-  const { data: job, error: jobError } = await supabase
-    .from('jobs')
-    .select('*')
-    .eq('id', jobId)
-    .single();
+export async function runDeepAnalysis(jobId: string, requestId?: string, userId: string = 'default'): Promise<AnalysisResult> {
+  const context = { requestId: requestId || Math.random().toString(36).substring(7) };
 
-  if (jobError || !job) {
-    throw new Error(`Вакансия не найдена: ${jobError?.message}`);
+  log.info(`Запуск глубокого анализа для вакансии ${jobId}`, {
+    jobId,
+    userId,
+    operation: 'deep_analysis_start'
+  }, context);
+
+  try {
+    const { data: job, error: jobError } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('id', jobId)
+      .single();
+
+    if (jobError || !job) {
+      log.database.error('Вакансия не найдена при запуске анализа', {
+        operation: 'select',
+        table: 'jobs',
+        recordId: jobId,
+        error: jobError?.message || 'Запись не найдена'
+      }, context);
+      throw new Error(`Вакансия не найдена: ${jobError?.message}`);
+    }
+
+    log.database.success('Данные вакансии загружены для анализа', {
+      operation: 'select',
+      table: 'jobs',
+      recordId: jobId
+    }, context);
+
+    const { data: userProfile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (profileError || !userProfile) {
+      log.database.error('Профиль пользователя не найден', {
+        operation: 'select',
+        table: 'user_profiles',
+        recordId: userId,
+        error: profileError?.message || 'Запись не найдена'
+      }, context);
+      throw new Error('Профиль пользователя не найден');
+    }
+
+    log.database.success('Профиль пользователя загружен', {
+      operation: 'select',
+      table: 'user_profiles',
+      recordId: userId
+    }, context);
+
+    // Получаем динамический промпт
+    const promptTemplate = await getPrompt('analysis');
+
+    // Подготавливаем полные данные для анализа
+    const analysisData = {
+      job: {
+        title: job.title || '',
+        description: job.description || '',
+        budget: job.budget || 'не указан',
+        budget_type: job.budget_type || 'не указан',
+        skills: job.skills || 'не указаны',
+        client_rank: job.client_rank || 'не указан',
+        client_country_name: job.client_country_name || 'не указана',
+        experience_level: job.experience_level || 'не указан',
+        client_payment_verified: job.client_payment_verified || false,
+        client_total_spent: job.client_total_spent || 0,
+        client_total_hires: job.client_total_hires || 0,
+        client_rating: job.client_rating || 0,
+        upwork_url: job.upwork_url || ''
+      },
+      user_profile: userProfile || null
+    };
+
+    log.info('Отправка данных на глубокий анализ OpenAI', {
+      jobId,
+      jobTitle: analysisData.job.title,
+      model: 'gpt-4o',
+      operation: 'openai_analysis_request'
+    }, context);
+
+    const filledPrompt = `${promptTemplate}
+
+ДАННЫЕ ДЛЯ АНАЛИЗА:
+${JSON.stringify(analysisData, null, 2)}`;
+
+    const response = await callOpenAI(filledPrompt, {
+      model: 'gpt-4o',
+      temperature: 0.7,
+      maxTokens: 2000,
+      responseFormat: { type: 'json_object' }
+    });
+
+    const result: AnalysisResult = JSON.parse(response);
+
+    log.info(`Анализ завершен со скором ${result.overall_score}`, {
+      jobId,
+      overallScore: result.overall_score,
+      recommendation: result.recommendation,
+      operation: 'analysis_result'
+    }, context);
+
+    const { error: updateError } = await supabase
+      .from('jobs')
+      .update({
+        ai_analysis: result,
+        analysis_processed_at: new Date().toISOString()
+      })
+      .eq('id', jobId);
+
+    if (updateError) {
+      log.database.error('Ошибка сохранения результата анализа', {
+        operation: 'update',
+        table: 'jobs',
+        recordId: jobId,
+        error: updateError.message
+      }, context);
+      throw updateError;
+    }
+
+    log.database.success('Результат анализа сохранен', {
+      operation: 'update',
+      table: 'jobs',
+      recordId: jobId
+    }, context);
+
+    return result;
+
+  } catch (error) {
+    log.error(`Ошибка при глубоком анализе вакансии ${jobId}`, {
+      jobId,
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+      operation: 'deep_analysis_error'
+    }, context);
+    throw error;
   }
-
-  const { data: userProfile, error: profileError } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (profileError || !userProfile) {
-    throw new Error('Профиль пользователя не найден');
-  }
-
-  const { data: prompt, error: promptError } = await supabase
-    .from('ai_prompts')
-    .select('prompt_text')
-    .eq('name', 'analysis_v1')
-    .eq('is_active', true)
-    .single();
-
-  if (promptError || !prompt) {
-    throw new Error('Промпт анализа не найден');
-  }
-
-  const filledPrompt = prompt.prompt_text
-    .replace('{user_profile}', JSON.stringify(userProfile, null, 2))
-    .replace('{title}', job.title || '')
-    .replace('{description}', job.description || '')
-    .replace('{budget}', job.budget || 'не указан')
-    .replace('{budget_type}', job.budget_type || 'не указан')
-    .replace('{skills}', job.skills || 'не указаны')
-    .replace('{client_rank}', job.client_rank || 'не указан')
-    .replace('{client_country}', job.client_country_name || 'не указана')
-    .replace('{experience_level}', job.experience_level || 'не указан')
-    .replace('{raw}', JSON.stringify(job.raw || {}, null, 2));
-
-  const response = await callOpenAI(filledPrompt, {
-    model: 'gpt-4o',
-    temperature: 0.7,
-    maxTokens: 2000,
-    responseFormat: { type: 'json_object' }
-  });
-
-  const result: AnalysisResult = JSON.parse(response);
-
-  await supabase
-    .from('jobs')
-    .update({
-      ai_analysis: result,
-      analysis_processed_at: new Date().toISOString()
-    })
-    .eq('id', jobId);
-
-  return result;
 }

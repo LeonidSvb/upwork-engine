@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { log } from '../../../lib/logging';
+import { runQuickFilter } from '../../../lib/ai-filter';
 
 export async function POST(request) {
   const requestId = Math.random().toString(36).substring(7);
@@ -19,14 +20,8 @@ export async function POST(request) {
       }
     }, { requestId, timestamp });
 
-    console.log('='.repeat(80));
-    console.log('WEBHOOK RECEIVED AT:', timestamp);
-    console.log('Total projects:', payload.total);
-    console.log('='.repeat(80));
-
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
       log.error('Отсутствуют креденшиалы Supabase', { requestId });
-      console.error('Missing Supabase credentials');
       return NextResponse.json({
         success: true,
         message: 'Data logged (Supabase not configured)',
@@ -60,7 +55,6 @@ export async function POST(request) {
         table: 'webhook_batches',
         error: batchError.message
       }, { requestId });
-      console.error('Batch save error:', batchError);
       throw batchError;
     }
 
@@ -69,7 +63,6 @@ export async function POST(request) {
       table: 'webhook_batches',
       recordId: batch.id
     }, { requestId });
-    console.log('Batch saved:', batch.id);
 
     const jobs = payload.projects?.map(project => {
       const urlMatch = project.url?.match(/pid=(\d+)/);
@@ -120,7 +113,6 @@ export async function POST(request) {
           table: 'jobs',
           error: jobsError.message
         }, { requestId });
-        console.error('Jobs save error:', jobsError);
         throw jobsError;
       }
 
@@ -129,7 +121,25 @@ export async function POST(request) {
         table: 'jobs',
         recordsCount: savedJobs.length
       }, { requestId });
-      console.log(`Saved ${savedJobs.length} jobs`);
+
+      // Автоматический запуск первичного фильтра для новых вакансий
+      log.info('Запуск автоматического фильтра для новых вакансий', {}, { requestId });
+
+      for (const job of savedJobs) {
+        try {
+          const filterResult = await runQuickFilter(job.id);
+          log.info(`Автофильтр для вакансии ${job.id}: ${filterResult.passed ? 'ПРОШЕЛ' : 'НЕ ПРОШЕЛ'}`, {
+            jobId: job.id,
+            passed: filterResult.passed,
+            reason: filterResult.reason
+          }, { requestId });
+        } catch (filterError) {
+          log.error(`Ошибка автофильтра для вакансии ${job.id}`, {
+            jobId: job.id,
+            error: filterError.message
+          }, { requestId });
+        }
+      }
     }
 
     const duration = Date.now() - startTime;
@@ -140,7 +150,6 @@ export async function POST(request) {
       jobsCount: jobs.length
     }, { requestId, duration });
 
-    console.log('='.repeat(80));
 
     return NextResponse.json({
       success: true,
@@ -157,7 +166,6 @@ export async function POST(request) {
       error: error.message
     }, { requestId, duration });
 
-    console.error('ERROR:', error);
     return NextResponse.json({
       error: 'Internal server error',
       message: error.message
